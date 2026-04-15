@@ -1,0 +1,100 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: $PROJECT_NAME-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: $PROJECT_NAME
+  template:
+    metadata:
+      labels:
+        app: $PROJECT_NAME
+    spec:
+      containers:
+        - name: $PROJECT_NAME
+          image: $CONTAINER_IMAGE
+          imagePullPolicy: Always
+          ports:
+          - containerPort: $CONTAINER_PORT
+          envFrom:
+          - configMapRef:
+              name: $PROJECT_NAME-configmap
+          readinessProbe:
+            httpGet:
+              path: $REDINES_PATH
+              port: $CONTAINER_PORT
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: $LIVENES_PATH
+              port: $CONTAINER_PORT
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 10
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: $PROJECT_NAME-configmap
+data:
+  #DB_NAME: "$DB_NAME"
+  #DB_USER: "$DB_USER"
+  #DB_PASS: "$DB_PASS"
+  #DB_HOST: "$DB_HOST"
+  #DB_PORT: "$DB_PORT"
+  #QLIK_USER_PASS: "$QLIK_USER_PASS"
+  QDRANT_BASE_URL: $QDRANT_BASE_URL
+  OPENAI_LLM_BASE_URL: $OPENAI_LLM_BASE_URL
+  OPENAI_LLM_MODEL_NAME: $OPENAI_LLM_MODEL_NAME
+  OLLAMA_LLM_BASE_URL: $OLLAMA_LLM_BASE_URL
+  OLLAMA_LLM_MODEL_NAME: $OLLAMA_LLM_MODEL_NAME
+  EMBEDDING_SERVICE: "$EMBEDDING_SERVICE"
+  EMBEDDING_SERVICE_TOKEN: $EMBEDDING_SERVICE_TOKEN
+  REDIS_URL: $REDIS_URL
+  TOKEN: $TOKEN
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: $PROJECT_NAME-service
+spec:
+  type: ClusterIP
+  selector:
+    app: $PROJECT_NAME
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: $CONTAINER_PORT
+
+---
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#  name: $PROJECT_NAME-ingress
+#  annotations:
+#    nginx.ingress.kubernetes.io/use-regex: "true"
+#    nginx.ingress.kubernetes.io/rewrite-target: /$2
+# spec:
+#  ingressClassName: "$ING_CLASS_NAME"
+#  rules:
+#  - host: $INGRESS_HOST
+#   http:
+#     paths:
+#      - pathType: ImplementationSpecific
+#        path: $INGRESS_PATH
+#        backend:
+#          service:
+#            name: $PROJECT_NAME-service
+#            port:
+#              number: 8080

@@ -1,0 +1,73 @@
+variables:
+  BUILD_REGISTRY: "nexus.sogaz.ru"
+  REPO_USER: "docker_push"
+  IMAGE_NAME: "search-engine-service-app"
+  DOCKER_IMAGE: "${BUILD_REGISTRY}/tmp-build/${IMAGE_NAME}"
+
+stages:
+    - security
+    - build
+    - deploy
+
+
+build:
+  stage: build
+  image: docker:28.3.3
+  tags:
+    - legalentityestate-runner
+
+  services:
+    - docker:28.3.3-dind
+  before_script:
+    - docker login -u ${REPO_USER} -p ${REPO_PASSWORD} ${BUILD_REGISTRY}
+  script:
+    - docker build -t ${DOCKER_IMAGE}:${CI_COMMIT_SHORT_SHA} -f Dockerfile .
+    - docker push ${DOCKER_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    - docker tag ${DOCKER_IMAGE}:${CI_COMMIT_SHORT_SHA} ${DOCKER_IMAGE}:latest
+    - docker push ${DOCKER_IMAGE}:latest
+
+deploy-prod:
+  needs: ["build"]
+  stage: deploy
+  image: $CI_REPO_DOCKER/devth/helm:v3.12.3
+  tags:
+    - legalentityestate-prod-runner
+  variables:
+    PROJECT_NAME: ${IMAGE_NAME}
+    CONTAINER_IMAGE: ${DOCKER_IMAGE}:latest
+    CONTAINER_PORT: "8000"
+    REDINES_PATH: "/health/ready"
+    LIVENES_PATH: "/health/live"
+    # INGRESS_HOST: "assistant.lee.sogaz.ru"
+    # INGRESS_PATH: "/api/"
+    # DB_NAME: assistant_db
+    # DB_USER: assistant_user
+    # DB_PASS: ${POSTGRES_PASSWORD_PROD}
+    QLIK_USER_PASS: ${QLIK_USER_PASS}
+    DB_HOST: legalentityestate-pg-db.sogaz.ru
+    DB_PORT: 5432
+    HOME: "/builds_dir"
+    QDRANT_BASE_URL: "http://10.191.73.13:6333"
+    PRIORITY_LLM_INTERFACE: ollama
+    OPENAI_LLM_BASE_URL: "http://s00-0000-ai08.sogaz.ru/h100-vllm/v1"
+    OPENAI_LLM_MODEL_NAME: "t-tech-lora-ui-kit"
+    OLLAMA_LLM_BASE_URL: "http://s00-0000-ai08.sogaz.ru/ai24-llm-gpu"
+    OLLAMA_LLM_MODEL_NAME: sogaz_ai
+    EMBEDDING_SERVICE: "http://s00-0000-ai08.sogaz.ru/ai24-embedding-service"
+    # ING_CLASS_NAME: "ingress-assistant"
+    REDIS_URL: ${REDIS_URL}
+    EMBEDDING_SERVICE_TOKEN: ${EMBEDDING_SERVICE_TOKEN}
+    TOKEN: ${TOKEN}
+  script:
+    - mkdir -p /builds_dir/.kube/
+    - echo ${KUBECONFIG_PROD} | base64 -d > /builds_dir/.kube/config
+    - cat $DEPLOY_YML > deploy.yml
+    - ING_CLASS_NAME="${ING_CLASS_NAME:-nginx}"
+    - envsubst < ./k8s/prod/deploy.yml | kubectl --kubeconfig /builds_dir/.kube/config  --context kubernetes-admin@cluster.local  apply -f - --namespace service-prod
+    - kubectl --kubeconfig /builds_dir/.kube/config  --context kubernetes-admin@cluster.local rollout restart deployment/${PROJECT_NAME}-deployment --namespace service-prod
+  when: manual
+
+include:
+  - project: 'sast/sast'
+    ref: master
+    file: 'runSast.yml'

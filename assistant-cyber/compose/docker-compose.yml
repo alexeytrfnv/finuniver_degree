@@ -1,0 +1,54 @@
+services:
+  adminer:
+    image: nexus.sogaz.ru/adminer
+    container_name: adminer
+    ports:
+      - "8081:8080"
+    links:
+      - postgres:db
+    depends_on:
+      - postgres
+    networks:
+      - shared-engine-network
+  postgres:
+    image: nexus.sogaz.ru/postgres:latest
+    container_name: psgr
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+    volumes:
+      - ../data:/docker-entrypoint-initdb.d
+      - assitant-pd-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}", ]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shared-engine-network
+  assistant-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: assistant-api
+    ports:
+      - "8080:8080"
+    command: >
+      sh -c "alembic upgrade head &&
+            uvicorn src.main:app --host 0.0.0.0 --port 8080"
+    env_file:
+      - "../.env"
+    volumes:
+      - "..:/app/"
+    networks:
+      - shared-engine-network
+
+volumes:
+  assitant-pd-data:
+
+networks:
+  shared-engine-network:
+    driver: bridge
+    name: engine-shared-network
+    

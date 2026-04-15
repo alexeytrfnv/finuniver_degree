@@ -1,0 +1,99 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: $PROJECT_NAME-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: $PROJECT_NAME
+  template:
+    metadata:
+      labels:
+        app: $PROJECT_NAME
+    spec:
+      containers:
+        - name: $PROJECT_NAME
+          image: $CONTAINER_IMAGE
+          imagePullPolicy: Always
+          ports:
+          - containerPort: 8080
+          envFrom:
+          - configMapRef:
+              name: $PROJECT_NAME-configmap
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 10
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: $PROJECT_NAME-configmap
+data:
+  DB_NAME: "$DB_NAME"
+  DB_USER: "$DB_USER"
+  DB_PASS: "$DB_PASS"
+  DB_HOST: "$DB_HOST"
+  DB_PORT: "$DB_PORT"
+  SEARCH_SERVICE_URL: "$SEARCH_SERVICE_URL"
+  BASE_COLLECTION_NAME: "$BASE_COLLECTION_NAME"
+  BASE_MODEL_URL: "$BASE_MODEL_URL"
+  BASE_MODEL_NAME: "$BASE_MODEL_NAME"
+  RESERVE_MODEL_URL: "$RESERVE_MODEL_URL"
+  RESERVE_MODEL_NAME: "$RESERVE_MODEL_NAME"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: $PROJECT_NAME-service
+spec:
+  type: ClusterIP
+  selector:
+    app: $PROJECT_NAME
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: $PROJECT_NAME-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - cyber.finrisk.sogaz.ru
+    secretName: tls-finrisk.cyber.fingap.tci
+  rules:
+  - host: cyber.finrisk.sogaz.ru
+    http:
+      paths:
+      - pathType: Prefix
+        path: /chat/streaming
+        backend:
+          service:
+            name: $PROJECT_NAME-service
+            port:
+              number: 8080

@@ -1,0 +1,49 @@
+variables:
+  BUILD_REGISTRY: "nexus.sogaz.ru"
+  REPO_USER: "docker_push"
+  IMAGE_NAME: "finrisk-assistant-cyber-frontend-app"
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  DOCKER_IMAGE: "${BUILD_REGISTRY}/tmp-build/${IMAGE_NAME}"
+  HOME: "/tmp"
+
+stages:
+    - security
+    - build
+    - deploy
+
+build:
+  stage: build
+  image: docker:28.3.3
+  tags:
+    - docker_sk02_runner
+  services:
+    - docker:28.3.3-dind
+  before_script:
+    - docker login -u ${REPO_USER} -p ${REPO_PASSWORD} ${BUILD_REGISTRY}
+  script:
+    - docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} -f Dockerfile .
+    - docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+    - docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
+    - docker push ${DOCKER_IMAGE}:latest
+
+deploy-prod:
+  needs: ["build"]
+  stage: deploy
+  image: $CI_REPO_DOCKER/devth/helm:v3.12.3
+  tags:
+    - prod
+  variables:
+    PROJECT_NAME: ${IMAGE_NAME}
+    CONTAINER_IMAGE: ${DOCKER_IMAGE}:${IMAGE_TAG}
+    CONTAINER_PORT: 80
+    READINESS_PATH: /health/readiness
+    LIVENESS_PATH: /health/liveness
+  script:
+    - envsubst < ./k8s/prod/deploy.yml | kubectl apply -f - --namespace ai-assistant
+    - kubectl rollout restart deployment/${PROJECT_NAME}-deployment --namespace ai-assistant
+  when: manual
+
+include:
+  - project: 'sast/sast'
+    ref: master
+    file: 'runSast.yml'

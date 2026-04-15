@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: $PROJECT_NAME-ingress
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+      - cyber.finrisk.sogaz.ru
+    secretName: tls-finrisk.cyber.fingap.tci
+  rules:
+  - host: cyber.finrisk.sogaz.ru
+    http:
+      paths:
+      - pathType: Prefix
+        path: /chat
+        backend:
+          service:
+            name: $PROJECT_NAME-service
+            port:
+              number: 80

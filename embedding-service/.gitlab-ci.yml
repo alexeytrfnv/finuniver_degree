@@ -1,0 +1,7 @@
+stages:
+  - security
+ 
+include:
+  - project: 'sast/sast'
+    ref: master
+    file: 'runSast.yml'
